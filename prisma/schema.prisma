@@ -1,0 +1,155 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Seller {
+  id            String    @id @default(uuid())
+  pharmacy_name String
+  email         String    @unique
+  password_hash String
+  license_number String?
+  gst_number    String?
+  phone         String?
+  address       String?
+  created_at    DateTime  @default(now())
+
+  medicines             Medicine[]
+  batches               MedicineBatch[]
+  sales                 Sale[]
+  borrowers             Borrower[]
+  borrower_transactions BorrowerTransaction[]
+  expenses              Expense[]
+
+  @@map("sellers")
+}
+
+model Medicine {
+  id                  String   @id @default(uuid())
+  seller_id           String
+  name                String
+  generic_name        String?
+  category            String?
+  unit                String   @default("strips")
+  min_stock_threshold Int      @default(10)
+  created_at          DateTime @default(now())
+
+  seller  Seller          @relation(fields: [seller_id], references: [id], onDelete: Cascade)
+  batches MedicineBatch[]
+
+  @@index([seller_id])
+  @@index([name])
+  @@map("medicines")
+}
+
+model MedicineBatch {
+  id                 String   @id @default(uuid())
+  medicine_id        String
+  seller_id          String
+  batch_number       String
+  manufacturer       String?
+  quantity_received  Int
+  quantity_available Int
+  purchase_price     Float
+  mrp                Float
+  expiry_date        DateTime
+  purchase_date      DateTime @default(now())
+
+  medicine   Medicine   @relation(fields: [medicine_id], references: [id], onDelete: Cascade)
+  seller     Seller     @relation(fields: [seller_id], references: [id], onDelete: Cascade)
+  sale_items SaleItem[]
+
+  @@index([medicine_id, expiry_date])
+  @@index([seller_id])
+  @@map("medicine_batches")
+}
+
+model Sale {
+  id             String   @id @default(uuid())
+  seller_id      String
+  invoice_number String   @unique
+  total_amount   Float
+  total_cogs     Float
+  payment_mode   String   @default("CASH") // CASH, ONLINE, CREDIT
+  sale_date      DateTime @default(now())
+
+  seller                Seller                @relation(fields: [seller_id], references: [id], onDelete: Cascade)
+  sale_items            SaleItem[]
+  borrower_transactions BorrowerTransaction[]
+
+  @@index([seller_id, sale_date])
+  @@map("sales")
+}
+
+model SaleItem {
+  id         String  @id @default(uuid())
+  sale_id    String
+  batch_id   String?
+  quantity   Int
+  unit_price Float
+  cogs       Float
+
+  sale  Sale           @relation(fields: [sale_id], references: [id], onDelete: Cascade)
+  batch MedicineBatch? @relation(fields: [batch_id], references: [id], onDelete: SetNull)
+
+  @@index([sale_id])
+  @@index([batch_id])
+  @@map("sale_items")
+}
+
+model Borrower {
+  id              String   @id @default(uuid())
+  seller_id       String
+  full_name       String
+  phone           String
+  credit_limit    Float    @default(5000.0)
+  current_balance Float    @default(0.0)
+  status          String   @default("PENDING") // PENDING, PARTIAL, SETTLED
+  created_at      DateTime @default(now())
+
+  seller       Seller                @relation(fields: [seller_id], references: [id], onDelete: Cascade)
+  transactions BorrowerTransaction[]
+
+  @@index([seller_id, phone])
+  @@map("borrowers")
+}
+
+model BorrowerTransaction {
+  id             String   @id @default(uuid())
+  borrower_id    String
+  seller_id      String
+  sale_id        String?
+  type           String   // 'CREDIT' or 'PAYMENT'
+  payment_method String   @default("CASH") // 'CASH', 'UPI', 'CARD', 'BANK_TRANSFER'
+  amount         Float
+  status         String   @default("SETTLED") // 'PENDING', 'PARTIAL', 'SETTLED'
+  notes          String?
+  created_at     DateTime @default(now())
+
+  borrower Borrower @relation(fields: [borrower_id], references: [id], onDelete: Cascade)
+  seller   Seller   @relation(fields: [seller_id], references: [id], onDelete: Cascade)
+  sale     Sale?    @relation(fields: [sale_id], references: [id], onDelete: SetNull)
+
+  @@index([borrower_id])
+  @@index([seller_id])
+  @@map("borrower_transactions")
+}
+
+model Expense {
+  id           String   @id @default(uuid())
+  seller_id    String
+  category     String   // 'RENT', 'UTILITIES', 'STAFF_SALARY', 'INVENTORY_WRITEOFF', 'OPERATIONAL'
+  title        String
+  amount       Float
+  expense_date DateTime @default(now())
+  created_at   DateTime @default(now())
+
+  seller Seller @relation(fields: [seller_id], references: [id], onDelete: Cascade)
+
+  @@index([seller_id, expense_date])
+  @@map("expenses")
+}
